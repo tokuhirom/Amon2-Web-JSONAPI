@@ -20,8 +20,8 @@ my $build = Module::Build->new(
     },
 
     no_index    => { 'directory' => [ 'inc' ] },
-    name        => 'Amon2-Web-JSONAPI-DFV',
-    module_name => 'Amon2::Web::JSONAPI::DFV',
+    name        => 'Amon2-Web-JSONAPI',
+    module_name => 'Amon2::Web::JSONAPI',
 
     # script_files => [''],
 

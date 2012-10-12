@@ -3,127 +3,27 @@ use strict;
 use warnings;
 use 5.010001;
 our $VERSION = '0.01';
-# undocumented, but it's possible.
-our $ALLOW_JSON_HIJACKING = 0;
-
-use Router::Simple ();
-use Amon2 ();
-use Amon2::Web ();
-use Carp ();
-
-sub import {
-    my $pkg = caller(0);
-    my $router = Router::Simple->new();
-    no strict 'refs';
-    unless ($pkg->isa('Amon2')) {
-        unshift @{"${pkg}::ISA"}, 'Amon2';
-    }
-    unshift @{"${pkg}::ISA"}, 'Amon2::Web';
-    unshift @{"${pkg}::ISA"}, 'Amon2::Web::JSONAPI::DFV::Impl';
-    $pkg->load_plugin(qw/Web::JSON/);
-    *{"${pkg}::post"} = sub { # post($path[, $rule], $code);
-        my $path = shift @_;
-        my $code = pop @_;
-        Carp::croak "Code must be code." unless ref $code eq 'CODE';
-        my $arg = +{
-            code   => $code,
-            method => 'POST',
-        };
-        if (@_) {
-            $arg->{rule} = shift @_;
-        }
-        $router->connect($path, $arg)
-    };
-    *{"${pkg}::get"} = sub {  # get($path[, $rule], $code);
-        my $path = shift @_;
-        my $code = pop @_;
-        Carp::croak "Code must be code." unless ref $code eq 'CODE';
-        my $arg = +{
-            code   => $code,
-            method => 'GET',
-        };
-        if (@_) {
-            $arg->{rule} = shift @_;
-        }
-        $router->connect($path, $arg)
-    };
-    *{"${pkg}::any"} = sub { # any($path, [, $rule], $code);
-        my $path = shift @_;
-        my $code = pop @_;
-        Carp::croak "Code must be code." unless ref $code eq 'CODE';
-        my $arg = +{ code   => $code };
-        if (@_) {
-            $arg->{rule} = shift @_;
-        }
-        $router->connect($path, $arg)
-    };
-    *{"${pkg}::router"} = sub { $router };
-}
-
-package # hide from pause
-    Amon2::Web::JSONAPI::DFV::Impl;
 
 use Data::FormValidator ();
-use Scalar::Util ();
-use Data::Dumper ();
 
-sub dispatch {
-    my ($c) = @_;
+sub validate_params {
+    my ($self, $rule) = @_;
 
-    if (my $params = $c->router->match($c->req->env)) {
-        if (exists($params->{method}) && $params->{method} ne $c->req->method) {
-            my $res = $c->render_json({
-                error => 'Method Not Allowed'
-            });
-            $res->code(405);
-            return $res; # 405 Method Not Allowed
-        } else {
-            my $valids;
-
-            # validate
-            if (my $rule = $params->{rule}) {
-                ( $valids, my $missings, my $invalids, my $unknowns ) =
-                    Data::FormValidator->validate( $c->req->parameters->as_hashref_mixed, $rule );
-                if (@$missings > 0 || @$invalids > 0) {
-                    my $res = $c->render_json(
-                        +{
-                            error => +{
-                                missings => $missings,
-                                invalids => $invalids,
-                            }
-                        }
-                    );
-                    $res->code(400); # 400 Bad Request
-                    return $res;
+    ( my $valids, my $missings, my $invalids, my $unknowns ) =
+        Data::FormValidator->validate( $self->req->parameters->as_hashref_mixed, $rule );
+    if (@$missings > 0 || @$invalids > 0) {
+        my $res = $self->render_json(
+            +{
+                error => +{
+                    missings => $missings,
+                    invalids => $invalids,
                 }
             }
-
-            # run code
-            my $res = $params->{code}->($c, $valids, $params);
-
-            # make response object
-            if (ref $res eq 'HASH') {
-                return $c->render_json($res); # succeeded
-            } elsif (Scalar::Util::blessed $res) {
-                return $res; # succeeded
-            } elsif (ref $res eq 'ARRAY') {
-                if ($Amon2::Web::JSONAPI::DFV::ALLOW_JSON_HIJACKING) {
-                    return $c->render_json($res); # succeeded
-                } else {
-                    die "JSON API using array makes possibly JSON hijacking. Please use HashRef instead.";
-                }
-            } else {
-                local $Data::Dumper::Terse = 1;
-                local $Data::Dumper::Indent = 0;
-                die("Unknown response: " . Data::Dumper::Dumper($res) . " : " . $c->req->path_info);
-            }
-        }
+        );
+        $res->code(400); # 400 Bad Request
+        return ($res, undef);
     } else {
-        my $res = $c->render_json(+{
-            error => 'Not Found'
-        });
-        $res->code(404);
-        return $res; # not found...
+        return (undef, $valids);
     }
 }
 
@@ -146,9 +46,9 @@ Amon2::Web::JSONAPI::DFV - API dispatcher DSL for Amon2
         optional => [qw/company fax country/],
         required => [qw/fullname phone email address/],
     } => sub {
-        my ($c, $valids, $args) = @_;
-        # $valids is a hashref, contains valid parameters.
+        my ($c, $args, $valids) = @_;
         # $args is a captured arguments from Router::Simple.
+        # $valids is a hashref, contains valid parameters.
         ...
         return +{
             foo => 'bar',
@@ -199,6 +99,9 @@ Same as C<any>, but invokes only in POST method.
 When get Non-POST request, server returns 405 Method Not Allowed.
 
 =back
+
+=head1 Making document from routes.
+
 
 =head1 AUTHOR
 

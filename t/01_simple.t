@@ -8,12 +8,12 @@ use HTTP::Response;
 
 {
     package MyApp::Web;
-    use Amon2::Web::JSONAPI::DFV;
+    use Amon2::Web::JSONAPI -DFV;
 
     get '/api/get' => +{
         required => [qw/x y/],
     }, sub {
-        my ($c, $valids, $args) = @_;
+        my ($c, $args, $valids) = @_;
         return +{
             result => $valids->{x} + $valids->{y}
         };
@@ -21,7 +21,7 @@ use HTTP::Response;
 
     get '/api/args/:id' => +{
     }, sub {
-        my ($c, $valids, $args) = @_;
+        my ($c, $args, $valids) = @_;
         return +{
             result => $args->{id}
         };
@@ -29,21 +29,17 @@ use HTTP::Response;
 
     # method testing.
     get '/api/method/get' => +{ }, sub {
-        my ($c, $valids, $args) = @_;
         return +{ "OK" => 1 };
     };
     post '/api/method/post' => +{ }, sub {
-        my ($c, $valids, $args) = @_;
         return +{ "OK" => 1 };
     };
     any '/api/method/any' => +{ }, sub {
-        my ($c, $valids, $args) = @_;
         return +{ "OK" => 1 };
     };
 
     # array testing
     get '/api/array' => sub {
-        my ($c, $valids, $args) = @_;
         return [1,2,3];
     };
 
@@ -135,7 +131,7 @@ subtest 'array response' => sub {
         like($@, qr/hijacking/);
     };
     subtest 'Allows if users accept security issue' => sub {
-        local $Amon2::Web::JSONAPI::DFV::ALLOW_JSON_HIJACKING = 1;
+        local $Amon2::Web::JSONAPI::ALLOW_JSON_HIJACKING = 1;
         my $res = run(GET 'http://example.com/api/array');
         is($res->code, 200);
         is($res->content, '[1,2,3]');
